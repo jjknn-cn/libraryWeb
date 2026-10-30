@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>首页 · 图书馆管理系统</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app" v-cloak>
+    <app-shell title="首页" active="index">
+        <div class="hero">
+            <div>
+                <h2>你好，{{ user.name }}！</h2>
+                <p>欢迎使用图书馆管理系统，当前身份：{{ user.role }}<span v-if="user.major"> · {{ user.major }}</span></p>
+            </div>
+            <div class="hero-badge">
+                上次登录：{{ loginTime }}
+            </div>
+        </div>
+
+        <div class="panel">
+            <div class="panel-title">我的功能</div>
+            <div class="cards">
+                <a v-for="card in cards" :key="card.text" class="card link" :href="card.href">
+                    <div class="card-icon">{{ card.icon }}</div>
+                    <div>
+                        <h3>{{ card.text }}</h3>
+                        <p>{{ card.desc }}</p>
+                    </div>
+                </a>
+            </div>
+            <div v-if="!cards.length" class="empty">
+                <span class="icon">🔒</span>当前角色暂无可用功能
+            </div>
+        </div>
+
+        <div class="panel">
+            <div class="panel-title">系统说明</div>
+            <div class="detail-list" style="grid-template-columns: 130px 1fr;">
+                <dt>项目名称</dt><dd>LibraryWeb2026（Maven Web 项目）</dd>
+                <dt>服务端</dt><dd>Servlet 6.0 + JDBC（自定义 JDBCTool）+ MySQL 8.4，无 Spring / MyBatis</dd>
+                <dt>前端</dt><dd>HTML + CSS + Vue 3 + Axios + jQuery，无 JSP，前后端同源部署</dd>
+                <dt>运行环境</dt><dd>JDK 17+ / Tomcat 10.1+（jakarta.servlet）</dd>
+                <dt>登录账号</dt><dd>管理员 admin / admin123，操作员 operator / operator123，学生 student1 / student123，教师 teacher / teacher123</dd>
+            </div>
+        </div>
+    </app-shell>
+</div>
+
+<script src="vendor/vue.global.prod.js"></script>
+<script src="vendor/axios.min.js"></script>
+<script src="vendor/jquery.min.js"></script>
+<script src="js/app.js"></script>
+<script>
+    (async function () {
+        if (!(await App.boot())) return;
+        Vue.createApp({
+            components: { AppShell },
+            data() {
+                return {
+                    user: App.user,
+                    meta: {
+                        '用户信息查询': { icon: '🔍', href: 'users.html', desc: '按关键字查询用户信息（只读）' },
+                        '借阅记录查询': { icon: '📋', href: 'loan-query.html', desc: '关键字 / 超期 / 日期范围查询' },
+                        '借阅数据统计': { icon: '📊', href: 'stats.html', desc: '按图书类型、用户专业统计借阅次数' },
+                        '借书': { icon: '📖', href: 'borrow.html', desc: '从可借图书中选择并办理借阅' },
+                        '还书': { icon: '↩️', href: 'return.html', desc: '归还本人借阅中的图书' },
+                        '审阅推荐图书': { icon: '✅', href: 'review.html', desc: '审阅教师推荐，通过或驳回' },
+                        '添加书籍': { icon: '➕', href: 'books.html?action=add', desc: '登记新书，按库存自动生成副本' },
+                        '查看所有书籍': { icon: '📚', href: 'books.html', desc: '浏览、检索全部图书' },
+                        '废弃图书': { icon: '🗑️', href: 'books.html?action=discard', desc: '副本全部归还后可废弃' },
+                        '编辑图书': { icon: '✏️', href: 'books.html?action=edit', desc: '修改书名、作者等基本信息' },
+                        '图书副本编辑': { icon: '🧩', href: 'books.html?action=copies', desc: '新增或删除图书副本' },
+                        '个人借阅查询': { icon: '🕘', href: 'my-loans.html', desc: '查看本人全部 / 未还 / 日期范围记录' },
+                        '推荐图书': { icon: '💡', href: 'recommend.html', desc: '向图书馆推荐采购图书' }
+                    }
+                };
+            },
+            computed: {
+                cards() {
+                    const meta = this.meta;
+                    return (this.user.permissions || []).map(function (text) {
+                        const item = meta[text] || { icon: '•', href: 'index.html', desc: '' };
+                        return { text: text, icon: item.icon, href: item.href, desc: item.desc };
+                    });
+                },
+                loginTime() {
+                    return App.fmt(this.user.loginTime);
+                }
+            }
+        }).mount('#app');
+    })();
+</script>
+</body>
+</html>

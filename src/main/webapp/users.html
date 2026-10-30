@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>用户信息查询 · 图书馆管理系统</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app" v-cloak>
+    <app-shell title="用户信息查询" active="users">
+        <div class="panel">
+            <div class="toolbar">
+                <input class="input" v-model.trim="keyword" placeholder="姓名 / 手机号 / 专业 / 角色 模糊查询" @keyup.enter="load">
+                <button class="btn btn-primary" @click="load">查询</button>
+                <button class="btn btn-outline" @click="reset">重置</button>
+                <span class="spacer"></span>
+                <span class="muted small">仅管理员可查看，页面数据只读</span>
+            </div>
+
+            <div v-if="error" class="alert alert-error">{{ error }}</div>
+
+            <div class="table-wrap">
+                <table class="data">
+                    <thead>
+                    <tr><th>姓名</th><th>角色</th><th>手机号</th><th>专业</th><th>创建时间</th><th>操作</th></tr>
+                    </thead>
+                    <tbody>
+                    <tr v-for="user in users" :key="user.id">
+                        <td><strong>{{ user.name }}</strong></td>
+                        <td><span class="badge badge-blue">{{ user.role }}</span></td>
+                        <td>{{ user.phone }}</td>
+                        <td>{{ user.major }}</td>
+                        <td class="small muted">{{ App.fmt(user.createTime) }}</td>
+                        <td><button class="btn btn-sm btn-outline" @click="detail(user)">查看</button></td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+            <div v-if="!users.length && !loading" class="empty">
+                <span class="icon">🔍</span>
+                <span v-if="!searched">输入关键字后点击"查询"，默认不显示数据</span>
+                <span v-else>没有符合条件的用户</span>
+            </div>
+            <div v-if="loading" class="loading">加载中…</div>
+        </div>
+    </app-shell>
+
+    <div class="modal-mask" v-if="selected" @click.self="selected = null">
+        <div class="modal">
+            <div class="modal-head">
+                <span>用户信息</span>
+                <button class="close" @click="selected = null">×</button>
+            </div>
+            <div class="modal-body">
+                <dl class="detail-list">
+                    <dt>姓名</dt><dd>{{ selected.name }}</dd>
+                    <dt>角色</dt><dd><span class="badge badge-blue">{{ selected.role }}</span></dd>
+                    <dt>手机号</dt><dd>{{ selected.phone }}</dd>
+                    <dt>专业</dt><dd>{{ selected.major }}</dd>
+                    <dt>创建时间</dt><dd>{{ App.fmt(selected.createTime) }}</dd>
+                    <dt>最后登录</dt><dd>{{ App.fmt(selected.loginTime) }}</dd>
+                    <template v-if="selected.role === '学生'">
+                        <dt>年级</dt><dd>{{ selected.grade || '—' }}</dd>
+                        <dt>所属学院</dt><dd>{{ selected.college || '—' }}</dd>
+                    </template>
+                    <template v-if="selected.role === '教师'">
+                        <dt>所属学院</dt><dd>{{ selected.college || '—' }}</dd>
+                        <dt>职称</dt><dd>{{ selected.title || '—' }}</dd>
+                    </template>
+                    <template v-if="selected.role === '管理员'">
+                        <dt>权限等级</dt><dd>{{ selected.permissionLevel }}</dd>
+                        <dt>入职时间</dt><dd>{{ App.day(selected.entryTime) }}</dd>
+                    </template>
+                    <template v-if="selected.role === '操作员'">
+                        <dt>负责区域</dt><dd>{{ selected.area || '—' }}</dd>
+                        <dt>职务</dt><dd>{{ selected.duty || '—' }}</dd>
+                    </template>
+                </dl>
+            </div>
+            <div class="modal-foot">
+                <button class="btn btn-outline" @click="selected = null">关闭</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="vendor/vue.global.prod.js"></script>
+<script src="vendor/axios.min.js"></script>
+<script src="vendor/jquery.min.js"></script>
+<script src="js/app.js"></script>
+<script>
+    (async function () {
+        if (!(await App.boot(['管理员']))) return;
+        Vue.createApp({
+            components: { AppShell },
+            data() {
+                return { App: App, keyword: '', users: [], loading: false, error: '', selected: null, searched: false };
+            },
+            methods: {
+                async load() {
+                    this.error = '';
+                    this.searched = true;
+                    if (!this.keyword) { this.users = []; return; }
+                    this.loading = true;
+                    try {
+                        this.users = await App.get('api/user/list', { keyword: this.keyword });
+                    } catch (e) {
+                        this.error = e.message;
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+                reset() {
+                    this.keyword = '';
+                    this.users = [];
+                    this.searched = false;
+                    this.error = '';
+                },
+                detail(user) { this.selected = user; }
+            }
+        }).mount('#app');
+    })();
+</script>
+</body>
+</html>

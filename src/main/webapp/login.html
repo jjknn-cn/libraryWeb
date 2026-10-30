@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>登录 · 图书馆管理系统</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app" v-cloak class="auth-page">
+    <div class="auth-card">
+        <div class="auth-brand">
+            <div class="logo">📚</div>
+            <h1>图书馆管理系统</h1>
+            <p>LibraryWeb2026 · Servlet + JDBC</p>
+        </div>
+
+        <div v-if="error" class="alert alert-error">{{ error }}</div>
+
+        <form @submit.prevent="login">
+            <div class="field">
+                <label>用户名<span class="req">*</span></label>
+                <input class="input" v-model.trim="form.name" placeholder="请输入姓名（用户名）" autocomplete="username">
+            </div>
+            <div class="field">
+                <label>密码<span class="req">*</span></label>
+                <input class="input" type="password" v-model="form.password" placeholder="请输入密码" autocomplete="current-password">
+            </div>
+            <div class="field">
+                <label>验证码<span class="req">*</span></label>
+                <div class="captcha-row">
+                    <input class="input" v-model.trim="form.captcha" maxlength="4" placeholder="请输入右侧验证码">
+                    <img :src="captchaUrl" alt="验证码" title="看不清？点击刷新" @click="refreshCaptcha">
+                </div>
+                <div class="hint">验证码不区分大小写，点击图片可刷新</div>
+            </div>
+            <div class="form-actions" style="justify-content: space-between;">
+                <button type="button" class="btn btn-outline" @click="reset">重置</button>
+                <button type="submit" class="btn btn-primary" :disabled="loading">{{ loading ? '登录中…' : '登 录' }}</button>
+            </div>
+        </form>
+
+        <div class="auth-footer">还没有账号？<a href="register.html">立即注册</a></div>
+    </div>
+</div>
+
+<script src="vendor/vue.global.prod.js"></script>
+<script src="vendor/axios.min.js"></script>
+<script src="vendor/jquery.min.js"></script>
+<script src="js/app.js"></script>
+<script>
+    Vue.createApp({
+        data() {
+            return {
+                form: { name: '', password: '', captcha: '' },
+                error: '',
+                loading: false,
+                captchaUrl: 'captcha?t=' + Date.now()
+            };
+        },
+        methods: {
+            refreshCaptcha() { this.captchaUrl = 'captcha?t=' + Date.now(); },
+            reset() {
+                this.form = { name: '', password: '', captcha: '' };
+                this.error = '';
+                this.refreshCaptcha();
+            },
+            async login() {
+                this.error = '';
+                if (!this.form.name) { this.error = '请输入用户名'; return; }
+                if (!this.form.password) { this.error = '请输入密码'; return; }
+                if (!this.form.captcha) { this.error = '请输入验证码'; return; }
+                this.loading = true;
+                try {
+                    await axios.post('api/auth/login', this.form);
+                    location.href = 'index.html';
+                } catch (e) {
+                    this.error = (e.response && e.response.data && e.response.data.msg) || '登录失败，请稍后重试';
+                    this.form.captcha = '';
+                    this.refreshCaptcha();
+                } finally {
+                    this.loading = false;
+                }
+            }
+        },
+        mounted() {
+            document.addEventListener('keydown', (e) => { if (e.key === 'Escape') this.error = ''; });
+        }
+    }).mount('#app');
+</script>
+</body>
+</html>
