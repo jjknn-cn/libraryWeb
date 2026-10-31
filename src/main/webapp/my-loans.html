@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>个人借阅查询 · 图书馆管理系统</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app" v-cloak>
+    <app-shell title="个人借阅查询" active="my-loans">
+        <div class="panel">
+            <div class="tabs">
+                <div class="tab" :class="{ active: tab === 'all' }" @click="switchTab('all')">全部记录</div>
+                <div class="tab" :class="{ active: tab === 'unreturned' }" @click="switchTab('unreturned')">未还记录</div>
+                <div class="tab" :class="{ active: tab === 'range' }" @click="switchTab('range')">按日期范围</div>
+            </div>
+
+            <div class="toolbar" v-if="tab === 'range'">
+                <input class="input" type="date" v-model="start">
+                <span class="muted">至</span>
+                <input class="input" type="date" v-model="end">
+                <button class="btn btn-primary" @click="load">查询</button>
+                <button class="btn btn-outline" @click="reset">重置</button>
+            </div>
+
+            <div v-if="error" class="alert alert-error">{{ error }}</div>
+
+            <div class="table-wrap">
+                <table class="data">
+                    <thead>
+                    <tr><th>书名</th><th>作者</th><th>类型</th><th>副本 ID</th><th>借书日期</th><th>应还日期</th><th>还书日期</th><th>状态</th></tr>
+                    </thead>
+                    <tbody>
+                    <tr v-for="loan in loans" :key="loan.loanId">
+                        <td><strong>{{ loan.title }}</strong></td>
+                        <td>{{ loan.author }}</td>
+                        <td><span class="badge badge-blue">{{ loan.type }}</span></td>
+                        <td class="mono">{{ App.shortId(loan.copyId) }}</td>
+                        <td class="small">{{ App.fmt(loan.borrowDate) }}</td>
+                        <td class="small">
+                            {{ App.fmt(loan.dueDate) }}
+                            <span v-if="loan.overdue" class="badge badge-red">超期 {{ loan.overdueDays }} 天</span>
+                        </td>
+                        <td class="small">{{ App.fmt(loan.returnDate) }}</td>
+                        <td><span class="badge" :class="App.statusClass(loan.status)">{{ loan.status }}</span></td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+            <div v-if="!loans.length" class="empty"><span class="icon">🕘</span>暂无借阅记录</div>
+            <div class="hint">共 {{ loans.length }} 条记录；超期状态根据应还日期自动计算。</div>
+        </div>
+    </app-shell>
+</div>
+
+<script src="vendor/vue.global.prod.js"></script>
+<script src="vendor/axios.min.js"></script>
+<script src="vendor/jquery.min.js"></script>
+<script src="js/app.js"></script>
+<script>
+    (async function () {
+        if (!(await App.boot())) return;
+        Vue.createApp({
+            components: { AppShell },
+            data() {
+                return { App: App, tab: 'all', loans: [], start: '', end: '', error: '' };
+            },
+            methods: {
+                switchTab(tab) {
+                    this.tab = tab;
+                    this.load();
+                },
+                async load() {
+                    this.error = '';
+                    const params = {};
+                    if (this.tab === 'unreturned') params.status = 'unreturned';
+                    if (this.tab === 'range') {
+                        if (!this.start || !this.end) { this.error = '请选择开始和结束日期'; this.loans = []; return; }
+                        params.start = this.start;
+                        params.end = this.end;
+                    }
+                    try {
+                        this.loans = await App.get('api/loan/mine', params);
+                    } catch (e) {
+                        this.error = e.message;
+                    }
+                },
+                reset() {
+                    this.start = '';
+                    this.end = '';
+                    this.load();
+                }
+            },
+            mounted() { this.load(); }
+        }).mount('#app');
+    })();
+</script>
+</body>
+</html>

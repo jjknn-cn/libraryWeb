@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>借阅数据统计 · 图书馆管理系统</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app" v-cloak>
+    <app-shell title="借阅数据统计" active="stats">
+        <div class="stat-grid" style="margin-bottom: 20px;">
+            <div class="stat">
+                <div class="num">{{ totalLoans }}</div>
+                <div class="label">借阅总次数</div>
+            </div>
+            <div class="stat">
+                <div class="num">{{ types.length }}</div>
+                <div class="label">图书类型数</div>
+            </div>
+            <div class="stat">
+                <div class="num">{{ majors.length }}</div>
+                <div class="label">用户专业数</div>
+            </div>
+        </div>
+
+        <div v-if="error" class="alert alert-error">{{ error }}</div>
+
+        <div class="panel">
+            <div class="panel-title">
+                <span>按图书类型统计借阅次数</span>
+                <span class="count">包含借阅次数为 0 的类型</span>
+            </div>
+            <div v-if="types.length">
+                <div class="bar-row" v-for="item in typeItems" :key="item.name">
+                    <span class="bar-label">{{ item.name }}</span>
+                    <div class="bar-track"><div class="bar-fill" :style="{ width: item.width + '%' }"></div></div>
+                    <span class="bar-value">{{ item.value }}</span>
+                </div>
+            </div>
+            <div v-else class="empty"><span class="icon">📊</span>暂无数据</div>
+        </div>
+
+        <div class="panel">
+            <div class="panel-title">
+                <span>按用户专业统计借阅次数</span>
+                <span class="count">包含借阅次数为 0 的专业</span>
+            </div>
+            <div v-if="majors.length">
+                <div class="bar-row" v-for="item in majorItems" :key="item.name">
+                    <span class="bar-label">{{ item.name }}</span>
+                    <div class="bar-track"><div class="bar-fill" :style="{ width: item.width + '%' }"></div></div>
+                    <span class="bar-value">{{ item.value }}</span>
+                </div>
+            </div>
+            <div v-else class="empty"><span class="icon">📊</span>暂无数据</div>
+        </div>
+    </app-shell>
+</div>
+
+<script src="vendor/vue.global.prod.js"></script>
+<script src="vendor/axios.min.js"></script>
+<script src="vendor/jquery.min.js"></script>
+<script src="js/app.js"></script>
+<script>
+    (async function () {
+        if (!(await App.boot(['管理员']))) return;
+        Vue.createApp({
+            components: { AppShell },
+            data() {
+                return { App: App, types: [], majors: [], error: '' };
+            },
+            computed: {
+                totalLoans() {
+                    return this.types.reduce(function (sum, item) { return sum + Number(item.value || 0); }, 0);
+                },
+                typeItems() { return this.withWidth(this.types); },
+                majorItems() { return this.withWidth(this.majors); }
+            },
+            methods: {
+                withWidth(list) {
+                    const max = Math.max(1, ...list.map(function (i) { return Number(i.value || 0); }));
+                    return list.map(function (i) {
+                        return { name: i.name, value: i.value, width: Math.round(Number(i.value || 0) / max * 100) };
+                    });
+                },
+                async load() {
+                    this.error = '';
+                    try {
+                        const results = await Promise.all([App.get('api/loan/statsByType'), App.get('api/loan/statsByMajor')]);
+                        this.types = results[0] || [];
+                        this.majors = results[1] || [];
+                    } catch (e) {
+                        this.error = e.message;
+                    }
+                }
+            },
+            mounted() { this.load(); }
+        }).mount('#app');
+    })();
+</script>
+</body>
+</html>

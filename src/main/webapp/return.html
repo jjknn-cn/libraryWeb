@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>还书 · 图书馆管理系统</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app" v-cloak>
+    <app-shell title="还书" active="return">
+        <div class="panel">
+            <div class="panel-title">
+                <span>我的借阅记录（未还）</span>
+                <span class="count">借阅中 {{ loans.length }} 本</span>
+            </div>
+            <div v-if="error" class="alert alert-error">{{ error }}</div>
+            <div v-if="message" class="alert alert-success">{{ message }}</div>
+            <div class="table-wrap">
+                <table class="data">
+                    <thead>
+                    <tr><th>书名</th><th>作者</th><th>副本 ID</th><th>借书日期</th><th>应还日期</th><th>状态</th><th>操作</th></tr>
+                    </thead>
+                    <tbody>
+                    <tr v-for="loan in loans" :key="loan.loanId">
+                        <td><strong>{{ loan.title }}</strong></td>
+                        <td>{{ loan.author }}</td>
+                        <td class="mono">{{ App.shortId(loan.copyId) }}</td>
+                        <td class="small">{{ App.fmt(loan.borrowDate) }}</td>
+                        <td class="small">
+                            <span :class="{ 'text-danger': loan.overdue }">{{ App.fmt(loan.dueDate) }}</span>
+                            <span v-if="loan.overdue" class="badge badge-red">超期 {{ loan.overdueDays }} 天</span>
+                        </td>
+                        <td><span class="badge" :class="App.statusClass(loan.status)">{{ loan.status }}</span></td>
+                        <td>
+                            <button class="btn btn-sm btn-primary" :disabled="returning" @click="giveBack(loan)">归还</button>
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+            <div v-if="!loans.length" class="empty"><span class="icon">✅</span>没有需要归还的图书</div>
+            <div class="hint">归还后，该记录会从"未还"列表中消失，库存自动加 1。</div>
+        </div>
+    </app-shell>
+</div>
+
+<script src="vendor/vue.global.prod.js"></script>
+<script src="vendor/axios.min.js"></script>
+<script src="vendor/jquery.min.js"></script>
+<script src="js/app.js"></script>
+<script>
+    (async function () {
+        if (!(await App.boot())) return;
+        Vue.createApp({
+            components: { AppShell },
+            data() {
+                return { App: App, loans: [], returning: false, error: '', message: '' };
+            },
+            methods: {
+                async load() {
+                    try {
+                        this.loans = await App.get('api/loan/mine', { status: 'unreturned' });
+                    } catch (e) {
+                        this.error = e.message;
+                    }
+                },
+                async giveBack(loan) {
+                    if (!confirm('确定归还《' + loan.title + '》吗？')) return;
+                    this.returning = true;
+                    this.error = '';
+                    this.message = '';
+                    try {
+                        await App.post('api/loan/return', { loanId: loan.loanId });
+                        this.message = '归还成功：《' + loan.title + '》';
+                        App.toast('归还成功');
+                        await this.load();
+                    } catch (e) {
+                        this.error = e.message;
+                    } finally {
+                        this.returning = false;
+                    }
+                }
+            },
+            mounted() { this.load(); }
+        }).mount('#app');
+    })();
+</script>
+</body>
+</html>

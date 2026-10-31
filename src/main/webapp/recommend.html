@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>推荐图书 · 图书馆管理系统</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app" v-cloak>
+    <app-shell title="推荐图书" active="recommend">
+        <div class="panel">
+            <div class="panel-title">
+                <span>图书推荐</span>
+                <span class="count">馆内已有相关书籍时无需重复推荐</span>
+            </div>
+            <div v-if="error" class="alert alert-error">{{ error }}</div>
+
+            <div class="form-grid" style="max-width: 720px;">
+                <div class="field">
+                    <label>书名<span class="req">*</span></label>
+                    <input class="input" v-model.trim="form.bookName" maxlength="20" placeholder="不超过 20 个字符">
+                </div>
+                <div class="field">
+                    <label>作者<span class="req">*</span></label>
+                    <input class="input" v-model.trim="form.author" maxlength="20">
+                </div>
+                <div class="field">
+                    <label>出版社<span class="req">*</span></label>
+                    <input class="input" v-model.trim="form.publisher" maxlength="25">
+                </div>
+                <div class="field">
+                    <label>参考价格（元）<span class="req">*</span></label>
+                    <input class="input" type="number" min="0" step="0.01" v-model.number="form.price">
+                </div>
+            </div>
+            <div class="form-actions" style="justify-content: flex-start;">
+                <button class="btn btn-primary" :disabled="submitting" @click="submit">{{ submitting ? '提交中…' : '提交推荐' }}</button>
+                <button class="btn btn-outline" @click="resetForm">清空</button>
+            </div>
+        </div>
+
+        <div class="panel" v-if="result">
+            <div class="panel-title">推荐结果</div>
+            <div class="alert" :class="result.exists ? 'alert-info' : 'alert-success'">{{ result.message }}</div>
+
+            <div v-if="result.exists">
+                <div class="hint" style="margin-bottom: 10px;">馆内已有以下相关书籍，可直接到"借书"页面借阅：</div>
+                <div class="table-wrap">
+                    <table class="data">
+                        <thead><tr><th>书名</th><th>作者</th><th>类型</th><th>出版社</th><th>可借数量</th></tr></thead>
+                        <tbody>
+                        <tr v-for="book in result.books" :key="book.id">
+                            <td><strong>{{ book.title }}</strong></td>
+                            <td>{{ book.author }}</td>
+                            <td><span class="badge badge-blue">{{ book.type }}</span></td>
+                            <td>{{ book.publisher }}</td>
+                            <td>{{ book.stock }}</td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div style="margin-top: 12px;"><a class="btn btn-outline" href="borrow.html">去借书 →</a></div>
+            </div>
+            <div v-else>
+                <div class="hint">推荐已提交，状态为"待审核"，管理员审阅通过后会加入图书列表。</div>
+            </div>
+        </div>
+    </app-shell>
+</div>
+
+<script src="vendor/vue.global.prod.js"></script>
+<script src="vendor/axios.min.js"></script>
+<script src="vendor/jquery.min.js"></script>
+<script src="js/app.js"></script>
+<script>
+    (async function () {
+        if (!(await App.boot(['教师']))) return;
+        Vue.createApp({
+            components: { AppShell },
+            data() {
+                return { App: App, form: { bookName: '', author: '', publisher: '', price: '' }, submitting: false, error: '', result: null };
+            },
+            methods: {
+                resetForm() {
+                    this.form = { bookName: '', author: '', publisher: '', price: '' };
+                    this.result = null;
+                    this.error = '';
+                },
+                async submit() {
+                    this.error = '';
+                    this.result = null;
+                    const f = this.form;
+                    if (!f.bookName || !f.author || !f.publisher) { this.error = '请填写书名、作者和出版社'; return; }
+                    if (f.price === '' || f.price === null || f.price < 0) { this.error = '请输入正确的参考价格'; return; }
+                    this.submitting = true;
+                    try {
+                        this.result = await App.post('api/recommend/submit', f);
+                        App.toast(this.result.exists ? '馆内已有相关书籍' : '推荐已提交审核');
+                    } catch (e) {
+                        this.error = e.message;
+                    } finally {
+                        this.submitting = false;
+                    }
+                }
+            }
+        }).mount('#app');
+    })();
+</script>
+</body>
+</html>

@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>审阅推荐 · 图书馆管理系统</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app" v-cloak>
+    <app-shell title="审阅推荐图书" active="review">
+        <div class="panel">
+            <div class="tabs">
+                <div class="tab" v-for="s in statuses" :key="s" :class="{ active: status === s }" @click="switchStatus(s)">
+                    {{ s }}<span v-if="s === '待审核' && pendingCount">（{{ pendingCount }}）</span>
+                </div>
+                <span class="spacer"></span>
+                <button class="btn btn-sm btn-outline" @click="load">刷新</button>
+            </div>
+
+            <div v-if="error" class="alert alert-error">{{ error }}</div>
+
+            <div class="table-wrap">
+                <table class="data">
+                    <thead>
+                    <tr><th>推荐人</th><th>书名</th><th>作者</th><th>出版社</th><th>价格</th><th>提交时间</th><th>状态</th><th>驳回理由</th><th>操作</th></tr>
+                    </thead>
+                    <tbody>
+                    <tr v-for="item in list" :key="item.id">
+                        <td>{{ item.userName }}<div class="small muted">{{ item.userRole }}</div></td>
+                        <td><strong>{{ item.bookName }}</strong></td>
+                        <td>{{ item.author }}</td>
+                        <td>{{ item.publisher }}</td>
+                        <td>￥{{ item.price }}</td>
+                        <td class="small muted">{{ App.fmt(item.createTime) }}</td>
+                        <td><span class="badge" :class="App.statusClass(item.status)">{{ item.status }}</span></td>
+                        <td class="small">{{ item.reason || '—' }}</td>
+                        <td class="actions" v-if="item.status === '待审核'">
+                            <button class="btn btn-sm btn-primary" @click="openApprove(item)">通过</button>
+                            <button class="btn btn-sm btn-danger" @click="openReject(item)">驳回</button>
+                        </td>
+                        <td v-else class="muted small">已处理</td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+            <div v-if="!list.length && !loading" class="empty"><span class="icon">📭</span>没有{{ status }}的推荐</div>
+            <div v-if="loading" class="loading">加载中…</div>
+        </div>
+    </app-shell>
+
+    <!-- 通过：补全图书信息 -->
+    <div class="modal-mask" v-if="approveItem" @click.self="approveItem = null">
+        <div class="modal">
+            <div class="modal-head">
+                <span>审阅通过并加入图书列表</span>
+                <button class="close" @click="approveItem = null">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info">
+                    《{{ approveItem.bookName }}》 · {{ approveItem.author }} · {{ approveItem.publisher }} · ￥{{ approveItem.price }}
+                </div>
+                <div v-if="formError" class="alert alert-error">{{ formError }}</div>
+                <div class="form-grid">
+                    <div class="field">
+                        <label>图书类型<span class="req">*</span></label>
+                        <input class="input" v-model.trim="form.type" maxlength="10" list="typeList" placeholder="如：计算机">
+                        <datalist id="typeList">
+                            <option v-for="t in types" :key="t" :value="t"></option>
+                        </datalist>
+                    </div>
+                    <div class="field">
+                        <label>还书期限（天）<span class="req">*</span></label>
+                        <input class="input" type="number" min="1" max="365" v-model.number="form.days">
+                    </div>
+                    <div class="field">
+                        <label>库存（生成副本数）<span class="req">*</span></label>
+                        <input class="input" type="number" min="0" max="1000" v-model.number="form.stock">
+                    </div>
+                    <div class="field full">
+                        <label>图书简介</label>
+                        <textarea class="textarea" v-model.trim="form.introduction" maxlength="512"></textarea>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-foot">
+                <button class="btn btn-outline" @click="approveItem = null">取消</button>
+                <button class="btn btn-primary" :disabled="saving" @click="approve">{{ saving ? '处理中…' : '通过并加入' }}</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 驳回理由 -->
+    <div class="modal-mask" v-if="rejectItem" @click.self="rejectItem = null">
+        <div class="modal">
+            <div class="modal-head">
+                <span>驳回推荐</span>
+                <button class="close" @click="rejectItem = null">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info">《{{ rejectItem.bookName }}》 · {{ rejectItem.author }}</div>
+                <div v-if="formError" class="alert alert-error">{{ formError }}</div>
+                <div class="field">
+                    <label>驳回理由<span class="req">*</span></label>
+                    <textarea class="textarea" v-model.trim="reason" maxlength="100" placeholder="请填写驳回理由（不超过 100 字）"></textarea>
+                </div>
+            </div>
+            <div class="modal-foot">
+                <button class="btn btn-outline" @click="rejectItem = null">取消</button>
+                <button class="btn btn-danger" :disabled="saving" @click="reject">{{ saving ? '处理中…' : '确认驳回' }}</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="vendor/vue.global.prod.js"></script>
+<script src="vendor/axios.min.js"></script>
+<script src="vendor/jquery.min.js"></script>
+<script src="js/app.js"></script>
+<script>
+    (async function () {
+        if (!(await App.boot(['管理员']))) return;
+        Vue.createApp({
+            components: { AppShell },
+            data() {
+                return {
+                    App: App,
+                    statuses: ['待审核', '已通过', '已驳回'],
+                    status: '待审核',
+                    list: [],
+                    pendingCount: 0,
+                    loading: false,
+                    error: '',
+                    types: [],
+                    approveItem: null,
+                    rejectItem: null,
+                    form: { type: '', days: 30, stock: 3, introduction: '' },
+                    reason: '',
+                    formError: '',
+                    saving: false
+                };
+            },
+            methods: {
+                switchStatus(status) {
+                    this.status = status;
+                    this.load();
+                },
+                async load() {
+                    this.loading = true;
+                    this.error = '';
+                    try {
+                        this.list = await App.get('api/recommend/list', { status: this.status });
+                        if (this.status !== '待审核') {
+                            const pending = await App.get('api/recommend/list', { status: '待审核' });
+                            this.pendingCount = pending.length;
+                        } else {
+                            this.pendingCount = this.list.length;
+                        }
+                    } catch (e) {
+                        this.error = e.message;
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+                async loadTypes() {
+                    try { this.types = await App.get('api/book/types'); } catch (e) { /* 忽略 */ }
+                },
+                openApprove(item) {
+                    this.approveItem = item;
+                    this.form = { type: '', days: 30, stock: 3, introduction: '' };
+                    this.formError = '';
+                },
+                openReject(item) {
+                    this.rejectItem = item;
+                    this.reason = '';
+                    this.formError = '';
+                },
+                async approve() {
+                    this.formError = '';
+                    if (!this.form.type) { this.formError = '请选择图书类型'; return; }
+                    if (!this.form.days || this.form.days <= 0) { this.formError = '还书期限必须大于 0'; return; }
+                    if (this.form.stock === '' || this.form.stock === null || this.form.stock < 0) { this.formError = '请输入正确的库存'; return; }
+                    this.saving = true;
+                    try {
+                        await App.post('api/recommend/approve', Object.assign({ id: this.approveItem.id }, this.form));
+                        App.toast('已通过并加入图书列表');
+                        this.approveItem = null;
+                        await this.load();
+                    } catch (e) {
+                        this.formError = e.message;
+                    } finally {
+                        this.saving = false;
+                    }
+                },
+                async reject() {
+                    this.formError = '';
+                    if (!this.reason) { this.formError = '请填写驳回理由'; return; }
+                    this.saving = true;
+                    try {
+                        await App.post('api/recommend/reject', { id: this.rejectItem.id, reason: this.reason });
+                        App.toast('已驳回该推荐');
+                        this.rejectItem = null;
+                        await this.load();
+                    } catch (e) {
+                        this.formError = e.message;
+                    } finally {
+                        this.saving = false;
+                    }
+                }
+            },
+            async mounted() {
+                await this.load();
+                await this.loadTypes();
+            }
+        }).mount('#app');
+    })();
+</script>
+</body>
+</html>

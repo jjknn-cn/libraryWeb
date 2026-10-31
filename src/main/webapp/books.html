@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>图书管理 · 图书馆管理系统</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app" v-cloak>
+    <app-shell title="图书管理" active="books">
+        <div class="panel">
+            <div class="toolbar">
+                <input class="input" v-model.trim="keyword" placeholder="书名 / 作者 / 类型 / 出版社 模糊查询" @keyup.enter="load">
+                <button class="btn btn-primary" @click="load">查询</button>
+                <button class="btn btn-outline" @click="reset">重置</button>
+                <span class="spacer"></span>
+                <button class="btn btn-primary" @click="openAdd">＋ 添加图书</button>
+            </div>
+
+            <div v-if="error" class="alert alert-error">{{ error }}</div>
+
+            <div class="table-wrap">
+                <table class="data">
+                    <thead>
+                    <tr>
+                        <th>书名</th>
+                        <th>作者</th>
+                        <th>类型</th>
+                        <th>出版社</th>
+                        <th>可借数量</th>
+                        <th>期限(天)</th>
+                        <th>价格</th>
+                        <th>状态</th>
+                        <th>创建时间</th>
+                        <th>操作</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr v-for="book in books" :key="book.id">
+                        <td><strong>{{ book.title }}</strong></td>
+                        <td>{{ book.author }}</td>
+                        <td><span class="badge badge-blue">{{ book.type }}</span></td>
+                        <td>{{ book.publisher }}</td>
+                        <td>{{ book.stock }}</td>
+                        <td>{{ book.days }}</td>
+                        <td>￥{{ book.price }}</td>
+                        <td><span class="badge" :class="App.statusClass(book.status)">{{ book.status }}</span></td>
+                        <td class="small muted">{{ App.day(book.createTime) }}</td>
+                        <td class="actions">
+                            <button class="btn btn-sm btn-outline" @click="openEdit(book)">编辑</button>
+                            <button class="btn btn-sm btn-outline" @click="openCopies(book)">副本</button>
+                            <button class="btn btn-sm btn-danger" :disabled="book.status === '已废弃'" @click="discard(book)">废弃</button>
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+            <div v-if="!loading && !books.length" class="empty"><span class="icon">📚</span>暂无图书数据</div>
+            <div v-if="loading" class="loading">加载中…</div>
+            <div class="hint">共 {{ books.length }} 本图书；库存为当前可借副本数，借出后自动减少、归还后自动恢复。</div>
+        </div>
+    </app-shell>
+
+    <!-- 添加 / 编辑图书 -->
+    <div class="modal-mask" v-if="showForm" @click.self="closeForm">
+        <div class="modal">
+            <div class="modal-head">
+                <span>{{ form.id ? '编辑图书' : '添加图书' }}</span>
+                <button class="close" @click="closeForm">×</button>
+            </div>
+            <div class="modal-body">
+                <div v-if="formError" class="alert alert-error">{{ formError }}</div>
+                <div class="form-grid">
+                    <div class="field full">
+                        <label>书名<span class="req">*</span></label>
+                        <input class="input" v-model.trim="form.title" maxlength="30" placeholder="不超过 30 个字符">
+                    </div>
+                    <div class="field">
+                        <label>作者<span class="req">*</span></label>
+                        <input class="input" v-model.trim="form.author" maxlength="30">
+                    </div>
+                    <div class="field">
+                        <label>类型<span class="req">*</span></label>
+                        <input class="input" v-model.trim="form.type" maxlength="10" list="typeList" placeholder="如：计算机">
+                        <datalist id="typeList">
+                            <option v-for="t in types" :key="t" :value="t"></option>
+                        </datalist>
+                    </div>
+                    <div class="field">
+                        <label>出版社<span class="req">*</span></label>
+                        <input class="input" v-model.trim="form.publisher" maxlength="20">
+                    </div>
+                    <div class="field">
+                        <label>还书期限（天）<span class="req">*</span></label>
+                        <input class="input" type="number" min="1" max="365" v-model.number="form.days">
+                    </div>
+                    <div class="field">
+                        <label>价格（元）<span class="req">*</span></label>
+                        <input class="input" type="number" min="0" step="0.01" v-model.number="form.price">
+                    </div>
+                    <div class="field" v-if="!form.id">
+                        <label>库存（自动生成副本）<span class="req">*</span></label>
+                        <input class="input" type="number" min="0" max="1000" v-model.number="form.stock">
+                        <div class="hint">添加后会按该数量自动创建图书副本</div>
+                    </div>
+                    <div class="field full">
+                        <label>图书简介</label>
+                        <textarea class="textarea" v-model.trim="form.introduction" maxlength="512" placeholder="不超过 512 个字符"></textarea>
+                    </div>
+                </div>
+                <div v-if="form.id" class="hint">编辑只更新书名、作者、类型、出版社、期限、价格，不会修改库存、副本和状态。</div>
+            </div>
+            <div class="modal-foot">
+                <button class="btn btn-outline" @click="closeForm">取消</button>
+                <button class="btn btn-primary" :disabled="saving" @click="save">{{ saving ? '保存中…' : '保存' }}</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 副本管理 -->
+    <div class="modal-mask" v-if="copyBook" @click.self="closeCopies">
+        <div class="modal" style="max-width: 720px;">
+            <div class="modal-head">
+                <span>图书副本 · {{ copyBook.title }}</span>
+                <button class="close" @click="closeCopies">×</button>
+            </div>
+            <div class="modal-body">
+                <div v-if="copyError" class="alert alert-error">{{ copyError }}</div>
+                <div class="toolbar">
+                    <span class="muted">可借副本：<strong>{{ copyBook.stock }}</strong></span>
+                    <span class="spacer"></span>
+                    <button class="btn btn-sm btn-primary" :disabled="copySaving" @click="addCopy">＋ 新增副本</button>
+                </div>
+                <div class="table-wrap">
+                    <table class="data">
+                        <thead>
+                        <tr><th>副本 ID</th><th>状态</th><th>借阅人</th><th>应还日期</th><th>操作</th></tr>
+                        </thead>
+                        <tbody>
+                        <tr v-for="copy in copies" :key="copy.id">
+                            <td class="mono">{{ App.shortId(copy.id) }}</td>
+                            <td>
+                                <span class="badge" :class="copy.borrowed ? 'badge-red' : 'badge-green'">
+                                    {{ copy.borrowed ? '已借出' : '可借阅' }}
+                                </span>
+                            </td>
+                            <td>{{ copy.userName || '—' }}</td>
+                            <td class="small">{{ App.fmt(copy.dueDate) }}</td>
+                            <td>
+                                <button class="btn btn-sm btn-danger" :disabled="copy.borrowed" @click="deleteCopy(copy)">删除</button>
+                            </td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div v-if="!copies.length" class="empty"><span class="icon">🧩</span>暂无副本</div>
+            </div>
+            <div class="modal-foot">
+                <button class="btn btn-outline" @click="closeCopies">关闭</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="vendor/vue.global.prod.js"></script>
+<script src="vendor/axios.min.js"></script>
+<script src="vendor/jquery.min.js"></script>
+<script src="js/app.js"></script>
+<script>
+    (async function () {
+        if (!(await App.boot(['管理员', '操作员']))) return;
+        Vue.createApp({
+            components: { AppShell },
+            data() {
+                return {
+                    App: App,
+                    keyword: '',
+                    books: [],
+                    types: [],
+                    loading: false,
+                    error: '',
+                    showForm: false,
+                    saving: false,
+                    formError: '',
+                    form: this.emptyForm(),
+                    copyBook: null,
+                    copies: [],
+                    copyError: '',
+                    copySaving: false
+                };
+            },
+            methods: {
+                emptyForm() {
+                    return { id: '', title: '', author: '', type: '', publisher: '', days: 30, price: 0, stock: 1, introduction: '' };
+                },
+                async load() {
+                    this.loading = true;
+                    this.error = '';
+                    try {
+                        const params = this.keyword ? { keyword: this.keyword } : {};
+                        this.books = await App.get('api/book/list', params);
+                    } catch (e) {
+                        this.error = e.message;
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+                async loadTypes() {
+                    try { this.types = await App.get('api/book/types'); } catch (e) { /* 忽略 */ }
+                },
+                reset() { this.keyword = ''; this.load(); },
+                openAdd() {
+                    this.form = this.emptyForm();
+                    this.formError = '';
+                    this.showForm = true;
+                },
+                openEdit(book) {
+                    this.form = {
+                        id: book.id, title: book.title, author: book.author, type: book.type,
+                        publisher: book.publisher, days: book.days, price: book.price,
+                        stock: book.stock, introduction: book.introduction || ''
+                    };
+                    this.formError = '';
+                    this.showForm = true;
+                },
+                closeForm() { this.showForm = false; },
+                async save() {
+                    this.formError = '';
+                    const f = this.form;
+                    if (!f.title || !f.author || !f.type || !f.publisher) { this.formError = '请填写书名、作者、类型和出版社'; return; }
+                    if (!f.days || f.days <= 0) { this.formError = '还书期限必须大于 0'; return; }
+                    if (f.price === '' || f.price === null || f.price < 0) { this.formError = '请输入正确的价格'; return; }
+                    if (!f.id && (f.stock === '' || f.stock === null || f.stock < 0)) { this.formError = '请输入正确的库存'; return; }
+                    this.saving = true;
+                    try {
+                        if (f.id) {
+                            await App.post('api/book/update', f);
+                            App.toast('图书信息已更新');
+                        } else {
+                            await App.post('api/book/add', f);
+                            App.toast('图书添加成功，已自动生成副本');
+                        }
+                        this.showForm = false;
+                        await this.load();
+                        await this.loadTypes();
+                    } catch (e) {
+                        this.formError = e.message;
+                    } finally {
+                        this.saving = false;
+                    }
+                },
+                async discard(book) {
+                    if (!confirm('确定废弃《' + book.title + '》吗？废弃后状态改为“已废弃”，借阅记录保留。')) return;
+                    try {
+                        await App.post('api/book/discard', { id: book.id });
+                        App.toast('图书已废弃');
+                        await this.load();
+                    } catch (e) {
+                        alert(e.message);
+                    }
+                },
+                async openCopies(book) {
+                    this.copyBook = book;
+                    this.copyError = '';
+                    await this.loadCopies(book.id);
+                },
+                async loadCopies(bookId) {
+                    try {
+                        const data = await App.get('api/book/copies', { bookId: bookId });
+                        this.copies = data.copies || [];
+                        this.copyBook = data;
+                    } catch (e) {
+                        this.copyError = e.message;
+                    }
+                },
+                closeCopies() { this.copyBook = null; this.copies = []; },
+                async addCopy() {
+                    this.copySaving = true;
+                    this.copyError = '';
+                    try {
+                        await App.post('api/book/addCopy', { bookId: this.copyBook.id });
+                        App.toast('副本已新增');
+                        await this.loadCopies(this.copyBook.id);
+                        await this.load();
+                    } catch (e) {
+                        this.copyError = e.message;
+                    } finally {
+                        this.copySaving = false;
+                    }
+                },
+                async deleteCopy(copy) {
+                    if (!confirm('确定删除该副本吗？删除后库存减 1。')) return;
+                    this.copySaving = true;
+                    this.copyError = '';
+                    try {
+                        await App.post('api/book/deleteCopy', { copyId: copy.id });
+                        App.toast('副本已删除');
+                        await this.loadCopies(this.copyBook.id);
+                        await this.load();
+                    } catch (e) {
+                        this.copyError = e.message;
+                    } finally {
+                        this.copySaving = false;
+                    }
+                }
+            },
+            async mounted() {
+                await this.load();
+                await this.loadTypes();
+                if (new URLSearchParams(location.search).get('action') === 'add') this.openAdd();
+            }
+        }).mount('#app');
+    })();
+</script>
+</body>
+</html>

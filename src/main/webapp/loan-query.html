@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>借阅记录查询 · 图书馆管理系统</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app" v-cloak>
+    <app-shell title="借阅记录查询" active="loan-query">
+        <div class="panel">
+            <div class="tabs">
+                <div class="tab" :class="{ active: tab === 'keyword' }" @click="switchTab('keyword')">关键字查询</div>
+                <div class="tab" :class="{ active: tab === 'overdue' }" @click="switchTab('overdue')">超期查询</div>
+                <div class="tab" :class="{ active: tab === 'range' }" @click="switchTab('range')">日期范围查询</div>
+            </div>
+
+            <div class="toolbar" v-if="tab === 'keyword'">
+                <input class="input" v-model.trim="keyword" placeholder="用户名 / 图书名 模糊匹配" @keyup.enter="search">
+                <button class="btn btn-primary" @click="search">查询</button>
+                <button class="btn btn-outline" @click="reset">重置</button>
+            </div>
+
+            <div class="toolbar" v-if="tab === 'overdue'">
+                <button class="btn btn-primary" @click="search">查询全部超期记录</button>
+                <span class="muted small">超期：未归还且应还日期早于当前时间</span>
+            </div>
+
+            <div class="toolbar" v-if="tab === 'range'">
+                <input class="input" type="date" v-model="start">
+                <span class="muted">至</span>
+                <input class="input" type="date" v-model="end">
+                <button class="btn btn-primary" @click="search">查询</button>
+                <button class="btn btn-outline" @click="reset">重置</button>
+                <span class="muted small">按借书时间筛选</span>
+            </div>
+
+            <div v-if="error" class="alert alert-error">{{ error }}</div>
+
+            <div class="table-wrap">
+                <table class="data">
+                    <thead>
+                    <tr><th>用户</th><th>角色</th><th>图书</th><th>借书时间</th><th>应还时间</th><th>还书时间</th><th>状态</th></tr>
+                    </thead>
+                    <tbody>
+                    <tr v-for="loan in loans" :key="loan.loanId">
+                        <td><strong>{{ loan.userName }}</strong></td>
+                        <td><span class="badge badge-blue">{{ loan.userRole }}</span></td>
+                        <td>{{ loan.title }}<div class="small muted">{{ loan.author }}</div></td>
+                        <td class="small">{{ App.fmt(loan.borrowDate) }}</td>
+                        <td class="small">
+                            {{ App.fmt(loan.dueDate) }}
+                            <span v-if="loan.overdue" class="badge badge-red">超期 {{ loan.overdueDays }} 天</span>
+                        </td>
+                        <td class="small">{{ App.fmt(loan.returnDate) }}</td>
+                        <td><span class="badge" :class="App.statusClass(loan.status)">{{ loan.status }}</span></td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+            <div v-if="!loans.length && !loading" class="empty">
+                <span class="icon">📋</span>
+                <span v-if="!searched">请选择查询方式后点击查询</span>
+                <span v-else>没有符合条件的借阅记录</span>
+            </div>
+            <div v-if="loading" class="loading">加载中…</div>
+            <div class="hint">共 {{ loans.length }} 条记录</div>
+        </div>
+    </app-shell>
+</div>
+
+<script src="vendor/vue.global.prod.js"></script>
+<script src="vendor/axios.min.js"></script>
+<script src="vendor/jquery.min.js"></script>
+<script src="js/app.js"></script>
+<script>
+    (async function () {
+        if (!(await App.boot(['管理员']))) return;
+        Vue.createApp({
+            components: { AppShell },
+            data() {
+                return { App: App, tab: 'keyword', keyword: '', start: '', end: '', loans: [], loading: false, error: '', searched: false };
+            },
+            methods: {
+                switchTab(tab) {
+                    this.tab = tab;
+                    this.loans = [];
+                    this.searched = false;
+                    this.error = '';
+                },
+                async search() {
+                    this.error = '';
+                    this.searched = true;
+                    const params = {};
+                    if (this.tab === 'keyword') {
+                        if (!this.keyword) { this.error = '请输入关键字'; return; }
+                        params.keyword = this.keyword;
+                    } else if (this.tab === 'overdue') {
+                        params.overdue = 1;
+                    } else {
+                        if (!this.start || !this.end) { this.error = '请选择开始和结束日期'; return; }
+                        params.start = this.start;
+                        params.end = this.end;
+                    }
+                    this.loading = true;
+                    try {
+                        this.loans = await App.get('api/loan/query', params);
+                    } catch (e) {
+                        this.error = e.message;
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+                reset() {
+                    this.keyword = '';
+                    this.start = '';
+                    this.end = '';
+                    this.loans = [];
+                    this.searched = false;
+                    this.error = '';
+                }
+            }
+        }).mount('#app');
+    })();
+</script>
+</body>
+</html>
